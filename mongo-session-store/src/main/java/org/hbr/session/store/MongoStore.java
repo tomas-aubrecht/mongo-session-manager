@@ -15,38 +15,20 @@
  */
 package org.hbr.session.store;
 
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.List;
-
+import com.mongodb.*;
 import org.apache.catalina.Container;
 import org.apache.catalina.LifecycleException;
-import org.apache.catalina.Loader;
 import org.apache.catalina.Session;
 import org.apache.catalina.Store;
 import org.apache.catalina.session.StandardSession;
 import org.apache.catalina.session.StoreBase;
 import org.apache.catalina.util.CustomObjectInputStream;
 
-import com.mongodb.BasicDBObject;
-import com.mongodb.DB;
-import com.mongodb.DBCollection;
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientOptions;
-import com.mongodb.MongoClientURI;
-import com.mongodb.MongoException;
-import com.mongodb.ReadPreference;
-import com.mongodb.ServerAddress;
-import com.mongodb.WriteConcern;
+import java.io.*;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
 
 /**
  * Tomcat {@link Store} implementation backed by MongoDB.
@@ -217,7 +199,7 @@ public class MongoStore extends StoreBase {
     	/* intialize the app name for this context */
     	if (this.name == null) {
     		/* get the container */
-            Container container = this.manager.getContainer();
+            Container container = this.manager.getContext();
             
             /* determine the context name from the container */
             String contextName = container.getName();
@@ -287,7 +269,7 @@ public class MongoStore extends StoreBase {
 		StandardSession session = null;
 		
 		/* get a reference to the container */
-		Container container = manager.getContainer();
+		Container container = manager.getContext();
 		
 		/* store a reference to the old class loader, as we will change this thread's
 		 * current context if we need to load custom classes
@@ -314,14 +296,11 @@ public class MongoStore extends StoreBase {
 					bis = new BufferedInputStream(new ByteArrayInputStream(data));					
 					
 					/* determine which class loader to use when reading the object */
-					Loader loader = null;
 					if (container != null) {
-						loader = container.getLoader();
-						if (loader != null) {
-							/* get the class loader for the container */
-							appContextLoader = loader.getClassLoader();
-							
-							/* update the thread's class loader before reading the 
+						/* get the class loader for the container */
+						appContextLoader = container.getParentClassLoader();
+						if (appContextLoader != null) {
+							/* update the thread's class loader before reading the
 							 * object
 							 */
 							Thread.currentThread().setContextClassLoader(appContextLoader);
@@ -378,7 +357,7 @@ public class MongoStore extends StoreBase {
 			this.collection.remove(sessionQuery);
 		} catch (MongoException e) {
 			/* for some reason we couldn't remove the data */
-			this.manager.getContainer().getLogger().fatal(
+			this.manager.getContext().getLogger().fatal(
 					"Unable to remove sessions for [" + id + ":" + this.getName() + "] from MongoDB", e);
 			throw e;
 		}
@@ -398,7 +377,7 @@ public class MongoStore extends StoreBase {
 			this.collection.remove(sessionQuery);
 		} catch (MongoException e) {
 			/* for some reason we couldn't save the data */
-			this.manager.getContainer().getLogger().fatal("Unable to remove sessions for [" + this.getName() + "] from MongoDB", e);
+			this.manager.getContext().getLogger().fatal("Unable to remove sessions for [" + this.getName() + "] from MongoDB", e);
 			throw e;
 		}
 	}
@@ -442,7 +421,7 @@ public class MongoStore extends StoreBase {
 			this.collection.update(sessionQuery, mongoSession, true, false);
 		} catch (MongoException e) {
 			/* for some reason we couldn't save the data */
-			this.manager.getContainer().getLogger().fatal("Unable to save session to MongoDB", e);
+			this.manager.getContext().getLogger().fatal("Unable to save session to MongoDB", e);
 			throw e;
 		} finally {
 			if (oos != null) {
@@ -522,7 +501,7 @@ public class MongoStore extends StoreBase {
 		try {
 			/* create our MongoClient */
 			if (this.connectionUri != null) {
-				manager.getContainer().getLogger().info(getStoreName() + "[" + this.getName() + "]: Connecting to MongoDB [" + this.connectionUri + "]");
+				manager.getContext().getLogger().info(getStoreName() + "[" + this.getName() + "]: Connecting to MongoDB [" + this.connectionUri + "]");
 				this.mongoClient = new MongoClient(this.connectionUri);
 			} else {
 				/* create the client using the Mongo options */
@@ -547,19 +526,19 @@ public class MongoStore extends StoreBase {
 					hosts.add(address);
 				}
 				
-				this.manager.getContainer().getLogger().info(getStoreName() + "[" + this.getName() + "]: Connecting to MongoDB [" + this.hosts + "]");
+				this.manager.getContext().getLogger().info(getStoreName() + "[" + this.getName() + "]: Connecting to MongoDB [" + this.hosts + "]");
 				
 				/* connect */				
 				this.mongoClient = new MongoClient(hosts, options);
 			}
 			
 			/* get a connection to our db */
-			this.manager.getContainer().getLogger().info(getStoreName() + "[" + this.getName() + "]: Using Database [" + this.dbName + "]");
+			this.manager.getContext().getLogger().info(getStoreName() + "[" + this.getName() + "]: Using Database [" + this.dbName + "]");
 			this.db = this.mongoClient.getDB(this.dbName);
 			
 			/* see if we need to authenticate */
 			if (this.username != null || this.password != null) {
-				this.manager.getContainer().getLogger().info(getStoreName() + "[" + this.getName() + "]: Authenticating using [" + this.username + "]");
+				this.manager.getContext().getLogger().info(getStoreName() + "[" + this.getName() + "]: Authenticating using [" + this.username + "]");
 				if (!this.db.authenticate(this.username, this.password.toCharArray())) {
 					throw new RuntimeException("MongoDB Authentication Failed");
 				}
@@ -567,7 +546,7 @@ public class MongoStore extends StoreBase {
 			
 			/* get a reference to the collection */
 			this.collection = this.db.getCollection(this.collectionName);			
-			this.manager.getContainer().getLogger().info(getStoreName() + "[" + this.getName() + "]: Preparing indexes");
+			this.manager.getContext().getLogger().info(getStoreName() + "[" + this.getName() + "]: Preparing indexes");
 			
 			/* drop any existing indexes */
 			try {
@@ -587,22 +566,22 @@ public class MongoStore extends StoreBase {
 						new BasicDBObject("lastModifiedProperty", this.timeToLive));	
 			} else {
 				/* no custom time to live specified, use the manager's settings */
-				if (this.manager.getMaxInactiveInterval() != -1) {
+				if (this.manager.getSessionMaxAliveTime() != -1) {
 					/* create a ttl index on the app property */
 					this.collection.ensureIndex(new BasicDBObject(lastModifiedProperty, 1), 
-							new BasicDBObject("lastModifiedProperty", this.manager.getMaxInactiveInterval()));	
+							new BasicDBObject("lastModifiedProperty", this.manager.getSessionMaxAliveTime()));
 				} else {
 					/* create a regular index */
 					this.collection.ensureIndex(new BasicDBObject(lastModifiedProperty, 1));
 				}
 			}
 			
-			this.manager.getContainer().getLogger().info(getStoreName() + "[" + this.getName() + "]: Store ready.");
+			this.manager.getContext().getLogger().info(getStoreName() + "[" + this.getName() + "]: Store ready.");
 		} catch (UnknownHostException uhe) {
-			this.manager.getContainer().getLogger().error("Unable to Connect to MongoDB", uhe);
+			this.manager.getContext().getLogger().error("Unable to Connect to MongoDB", uhe);
 			throw new LifecycleException(uhe);
 		} catch (MongoException me) {
-			this.manager.getContainer().getLogger().error("Unable to Connect to MongoDB", me);
+			this.manager.getContext().getLogger().error("Unable to Connect to MongoDB", me);
 			throw new LifecycleException(me);
 		}
 	}

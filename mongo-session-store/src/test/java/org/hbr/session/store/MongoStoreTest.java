@@ -55,16 +55,16 @@ public class MongoStoreTest {
 	@Before
 	public void setUp() throws Exception {
 		/* set up the manager */
-		this.manager.setContainer(new StandardContext());
-		this.manager.getContainer().setName("test");
-		this.manager.getContainer().setParent(new StandardEngine());
-		this.manager.getContainer().getParent().setName("parent");
+		this.manager.setContext(new StandardContext());
+		this.manager.getContext().setName("test");
+		this.manager.getContext().setParent(new StandardEngine());
+		this.manager.getContext().getParent().setName("parent");
 		
 		
 		/* create the store */
 		this.mongoStore = new MongoStore();
 		this.mongoStore.setHosts("127.0.0.1:27017");
-		this.mongoStore.setDbName("unitest");
+		this.mongoStore.setDbName("unitest9");
 		this.mongoStore.setManager(manager);
 		
 		this.manager.setStore(mongoStore);
